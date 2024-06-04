@@ -17,6 +17,7 @@ fn main() {
             }),
             ..default()
         }))
+        .init_resource::<FontSpec>()
         .add_startup_systems(
             (
                 setup,
@@ -133,7 +134,7 @@ impl Board {
             .insert(board);
     }
 
-    fn spawn_tiles(mut commands: Commands, query_board: Query<&Board>) {
+    fn spawn_tiles(mut commands: Commands, query_board: Query<&Board>, font_spec: Res<FontSpec>) {
         let board = query_board.single();
 
         let mut rng = rand::thread_rng();
@@ -152,9 +153,41 @@ impl Board {
                     transform: Transform::from_xyz(render_pos.x, render_pos.y, 1.),
                     ..default()
                 })
+                .with_children(|child_builder| {
+                    child_builder.spawn(Text2dBundle {
+                        text: Text::from_section(
+                            "2",
+                            TextStyle {
+                                font_size: 40.,
+                                color: Color::BLACK,
+                                font: font_spec.family.clone(),
+                                ..default()
+                            },
+                        )
+                        .with_alignment(TextAlignment::Center),
+                        transform: Transform::from_xyz(0., 0., 1.),
+                        ..default()
+                    });
+                })
                 .insert(Points { value: 2 })
                 .insert(pos);
         }
+    }
+}
+
+#[derive(Resource)]
+struct FontSpec {
+    family: Handle<Font>,
+}
+impl FromWorld for FontSpec {
+    fn from_world(world: &mut World) -> Self {
+        let asset_server = world
+            .get_resource_mut::<AssetServer>()
+            .expect("AssetServer to be initialised with the DefaultPlugins");
+
+        return FontSpec {
+            family: asset_server.load("fonts/FiraSans-Bold.ttf"),
+        };
     }
 }
 
@@ -168,3 +201,6 @@ struct Position {
     x: u8,
     y: u8,
 }
+
+#[derive(Component)]
+struct TileText;
