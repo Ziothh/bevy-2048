@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+///! Followed from the [2048 bevy course](https://www.rustadventure.dev/2048-with-bevy-ecs/bevy-0.10/updating-tile-display-when-point-values-change)
 use std::ops;
 
 use bevy::prelude::*;
@@ -27,6 +28,7 @@ fn main() {
             )
                 .chain(),
         )
+        .add_system(Board::render_tile_points)
         .run();
 }
 
@@ -154,23 +156,44 @@ impl Board {
                     ..default()
                 })
                 .with_children(|child_builder| {
-                    child_builder.spawn(Text2dBundle {
-                        text: Text::from_section(
-                            "2",
-                            TextStyle {
-                                font_size: 40.,
-                                color: Color::BLACK,
-                                font: font_spec.family.clone(),
-                                ..default()
-                            },
-                        )
-                        .with_alignment(TextAlignment::Center),
-                        transform: Transform::from_xyz(0., 0., 1.),
-                        ..default()
-                    });
+                    child_builder
+                        .spawn(Text2dBundle {
+                            text: Text::from_section(
+                                "69",
+                                TextStyle {
+                                    font_size: Board::TILE_SIZE,
+                                    color: Color::BLACK,
+                                    font: font_spec.family.clone(),
+                                    ..default()
+                                },
+                            )
+                            .with_alignment(TextAlignment::Center),
+                            transform: Transform::from_xyz(0., 0., 1.),
+                            ..default()
+                        })
+                        .insert(TileText);
                 })
                 .insert(Points { value: 2 })
                 .insert(pos);
+        }
+    }
+
+    fn render_tile_points(
+        mut texts: Query<&mut Text, With<TileText>>,
+        tiles: Query<(&Points, &Children)>,
+    ) {
+        for (points, children) in tiles.iter() {
+            // We expect that our tiles will have the entity with the Text component as the first child
+            // (because that's how we built them) so we access that with children.first().
+            if let Some(entity) = children.first() {
+                let mut text = texts.get_mut(*entity).expect("expect Text to exist");
+
+                let text_section = text
+                    .sections
+                    .first_mut()
+                    .expect("expect first section to be accessible as mutable");
+                text_section.value = points.value.to_string();
+            }
         }
     }
 }
