@@ -2,7 +2,7 @@
 #![allow(unused_variables)]
 
 ///! Followed from the [2048 bevy course](https://www.rustadventure.dev/2048-with-bevy-ecs/bevy-0.10/updating-tile-display-when-point-values-change)
-use std::ops;
+use std::{cmp::Ordering, ops};
 
 use bevy::prelude::*;
 use itertools::Itertools;
@@ -28,7 +28,10 @@ fn main() {
             )
                 .chain(),
         )
-        .add_systems((Board::render_tile_points, BoardShiftDirection::handle_keypress))
+        .add_systems((
+            Board::render_tile_points,
+            BoardShiftDirection::sys_handle_keypress,
+        ))
         .run();
 }
 
@@ -120,6 +123,7 @@ impl Board {
             })
             .with_children(|builder| {
                 for (x, y) in board.iter_dimensions() {
+                    println!("({x}, {y})");
                     let pos = board.cell_position_to_physical(x, y);
 
                     builder.spawn(SpriteBundle {
@@ -205,7 +209,11 @@ enum BoardShiftDirection {
     Down,
 }
 impl BoardShiftDirection {
-    fn handle_keypress(input: Res<Input<KeyCode>>) {
+    fn sys_handle_keypress(
+        input: Res<Input<KeyCode>>,
+        mut tiles: Query<(Entity, &mut Position, &mut Points)>,
+        mut commands: Commands,
+    ) {
         let Some(direction) = input
             .get_just_pressed()
             .find_map(|key_code| BoardShiftDirection::try_from(key_code).ok())
@@ -221,6 +229,49 @@ impl BoardShiftDirection {
                 dbg!("Down");
             }
             BoardShiftDirection::Left => {
+                let mut ordered_tiles = tiles
+                    .iter_mut()
+                    .sorted_by(|a, b| match Ord::cmp(&a.1.y, &b.1.y) {
+                        Ordering::Equal => Ord::cmp(&a.1.x, &b.1.x),
+                        ordering => ordering,
+                    })
+                    .peekable();
+
+                let mut column: u8 = 0;
+
+                while let Some(mut tile) = ordered_tiles.next() {
+                    tile.1.x = column;
+
+                    let Some(next_tile) = ordered_tiles.peek() else {
+                        continue;
+                    };
+
+                    if tile.1.y != next_tile.1.y {
+                        // Different rows, don't merge
+                        column = 0;
+                    } else if tile.2.value != next_tile.2.value {
+                        // Different values, don't merge
+                        column += 1;
+                    } else {
+                        // Merge
+                        let real_next_tile = ordered_tiles
+                            .next()
+                            .expect("A peekable tile should always exist when calling .next()");
+
+                        // Update the values
+                        tile.2.value = tile.2.value + real_next_tile.2.value;
+
+                        commands.entity(real_next_tile.0).despawn_recursive();
+
+                        if let Some(future) = ordered_tiles.peek() {
+                            if tile.1.y != future.1.y {
+                                column = 0;
+                            } else {
+                                column = column + 1;
+                            }
+                        }
+                    }
+                }
                 dbg!("Left");
             }
             BoardShiftDirection::Right => {
@@ -262,12 +313,12 @@ impl FromWorld for FontSpec {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct Points {
     value: u32,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct Position {
     x: u8,
     y: u8,
