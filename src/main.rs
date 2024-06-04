@@ -28,7 +28,7 @@ fn main() {
             )
                 .chain(),
         )
-        .add_system(Board::render_tile_points)
+        .add_systems((Board::render_tile_points, BoardShiftDirection::handle_keypress))
         .run();
 }
 
@@ -159,7 +159,7 @@ impl Board {
                     child_builder
                         .spawn(Text2dBundle {
                             text: Text::from_section(
-                                "69",
+                                "",
                                 TextStyle {
                                     font_size: Board::TILE_SIZE,
                                     color: Color::BLACK,
@@ -195,6 +195,54 @@ impl Board {
                 text_section.value = points.value.to_string();
             }
         }
+    }
+}
+
+enum BoardShiftDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+impl BoardShiftDirection {
+    fn handle_keypress(input: Res<Input<KeyCode>>) {
+        let Some(direction) = input
+            .get_just_pressed()
+            .find_map(|key_code| BoardShiftDirection::try_from(key_code).ok())
+        else {
+            return;
+        };
+
+        match direction {
+            BoardShiftDirection::Up => {
+                dbg!("Up");
+            }
+            BoardShiftDirection::Down => {
+                dbg!("Down");
+            }
+            BoardShiftDirection::Left => {
+                dbg!("Left");
+            }
+            BoardShiftDirection::Right => {
+                dbg!("Right");
+            }
+        };
+    }
+}
+
+impl TryFrom<&KeyCode> for BoardShiftDirection {
+    type Error = ();
+
+    fn try_from(value: &KeyCode) -> Result<Self, Self::Error> {
+        use BoardShiftDirection::*;
+
+        return match value {
+            KeyCode::Left | KeyCode::H | KeyCode::A => Ok(Left),
+            KeyCode::Right | KeyCode::L | KeyCode::D => Ok(Right),
+            KeyCode::Down | KeyCode::J | KeyCode::S => Ok(Down),
+            KeyCode::Up | KeyCode::K | KeyCode::W => Ok(Up),
+            _ => Err(()),
+        };
     }
 }
 
