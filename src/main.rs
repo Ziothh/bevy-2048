@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::ops;
+
 use bevy::prelude::*;
 use itertools::Itertools;
+use rand::{self, seq::IteratorRandom};
 
 fn main() {
     App::new()
@@ -14,7 +17,15 @@ fn main() {
             }),
             ..default()
         }))
-        .add_startup_systems((setup, Board::spawn))
+        .add_startup_systems(
+            (
+                setup,
+                Board::spawn,
+                apply_system_buffers, // Forces the previously queued spawn commands to be ran
+                Board::spawn_tiles,
+            )
+                .chain(),
+        )
         .run();
 }
 
@@ -28,9 +39,6 @@ struct Board {
 }
 
 impl Board {
-    pub const TILE_SIZE: f32 = 40.;
-    pub const TILE_SPACING: f32 = 10.;
-
     pub const COLOR: Color = Color::Lcha {
         lightness: 0.06,
         chroma: 0.088,
@@ -38,14 +46,35 @@ impl Board {
         alpha: 1.,
     };
 
+    pub const TILE_SIZE: f32 = 40.;
+    pub const TILE_SPACING: f32 = 10.;
+    pub const TILE_COLOR: Color = Color::Lcha {
+        lightness: 0.85,
+        chroma: 0.5,
+        hue: 315.0,
+        alpha: 1.0,
+    };
+    pub const TILE_PLACEHOLDER_COLOR: Color = Color::Lcha {
+        lightness: 0.55,
+        chroma: 0.5,
+        hue: 315.0,
+        alpha: 1.0,
+    };
+
     fn new(size: u8) -> Self {
         return Self { size };
     }
 
+    fn dimensions(&self) -> (u8, u8) {
+        return (self.size, self.size);
+    }
+
     fn physical_size(&self) -> Vec2 {
-        let size =
-            self.size as f32 * Board::TILE_SIZE + (self.size + 1) as f32 * Board::TILE_SPACING;
-        return Vec2::new(size, size);
+        let (width, height) = self.dimensions();
+        return Vec2::new(
+            width as f32 * Board::TILE_SIZE + (width + 1) as f32 * Board::TILE_SPACING,
+            height as f32 * Board::TILE_SIZE + (height + 1) as f32 * Board::TILE_SPACING,
+        );
     }
 
     fn origin(&self) -> Vec2 {
@@ -67,6 +96,11 @@ impl Board {
         );
     }
 
+    fn iter_dimensions(&self) -> itertools::Product<ops::Range<u8>, ops::Range<u8>> {
+        let (width, height) = self.dimensions();
+        return (0..width).cartesian_product(0..height);
+    }
+
     fn spawn(mut commands: Commands) {
         let board = Board { size: 4 };
 
@@ -82,12 +116,12 @@ impl Board {
                 ..default()
             })
             .with_children(|builder| {
-                for (x, y) in (0..board.size).cartesian_product(0..board.size) {
+                for (x, y) in board.iter_dimensions() {
                     let pos = board.cell_position_to_physical(x, y);
 
                     builder.spawn(SpriteBundle {
                         sprite: Sprite {
-                            color: Tile::PLACEHOLDER_COLOR,
+                            color: Board::TILE_PLACEHOLDER_COLOR,
                             custom_size: Some(Vec2::new(Board::TILE_SIZE, Board::TILE_SIZE)),
                             ..default()
                         },
@@ -98,15 +132,39 @@ impl Board {
             })
             .insert(board);
     }
+
+    fn spawn_tiles(mut commands: Commands, query_board: Query<&Board>) {
+        let board = query_board.single();
+
+        let mut rng = rand::thread_rng();
+        let starting_tiles: Vec<(u8, u8)> = board.iter_dimensions().choose_multiple(&mut rng, 2);
+
+        for pos in starting_tiles.iter().map(|&(x, y)| Position { x, y }) {
+            let render_pos = board.cell_position_to_physical(pos.x, pos.y);
+
+            commands
+                .spawn(SpriteBundle {
+                    sprite: Sprite {
+                        color: Board::TILE_COLOR,
+                        custom_size: Some(Vec2::new(Board::TILE_SIZE, Board::TILE_SIZE)),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(render_pos.x, render_pos.y, 1.),
+                    ..default()
+                })
+                .insert(Points { value: 2 })
+                .insert(pos);
+        }
+    }
 }
 
-struct Tile {}
+#[derive(Component)]
+struct Points {
+    value: u32,
+}
 
-impl Tile {
-    pub const PLACEHOLDER_COLOR: Color = Color::Lcha {
-        lightness: 0.55,
-        chroma: 0.5,
-        hue: 315.0,
-        alpha: 1.0,
-    };
+#[derive(Component)]
+struct Position {
+    x: u8,
+    y: u8,
 }
