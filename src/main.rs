@@ -24,14 +24,15 @@ fn main() {
                 setup,
                 Board::spawn,
                 apply_system_buffers, // Forces the previously queued spawn commands to be ran
-                Board::spawn_tiles,
             )
                 .chain(),
         )
+        .add_event::<NewTileEvent>()
         .add_systems((
             Board::render_tiles,
             Board::render_tile_points,
-            BoardShiftDirection::sys_handle_keypress,
+            BoardShiftDirection::sys_handle_board_shift_on_keypress,
+            Board::on_new_tile_handler,
         ))
         .run();
 }
@@ -110,10 +111,12 @@ impl Board {
         return (0..width).cartesian_product(0..height);
     }
 
-    fn spawn(mut commands: Commands) {
+    fn spawn(mut commands: Commands, font_spec: Res<FontSpec>, tiles: Query<&Position>) {
         let board = Board { size: 4 };
 
         let offset = -board.physical_size() / 2. + Board::TILE_SIZE / 2.;
+
+        board.spawn_tiles(&mut commands, &font_spec, &tiles, 2);
 
         commands
             .spawn(SpriteBundle {
@@ -143,14 +146,27 @@ impl Board {
             .insert(board);
     }
 
-    fn spawn_tiles(mut commands: Commands, query_board: Query<&Board>, font_spec: Res<FontSpec>) {
-        let board = query_board.single();
-
+    fn spawn_tiles(
+        &self,
+        commands: &mut Commands,
+        font_spec: &Res<FontSpec>,
+        tiles: &Query<&Position>,
+        amount: usize,
+    ) {
         let mut rng = rand::thread_rng();
-        let starting_tiles: Vec<(u8, u8)> = board.iter_dimensions().choose_multiple(&mut rng, 2);
+        let new_tiles: Vec<Position> = self
+            .iter_dimensions()
+            .map(|(x, y)| Position { x, y })
+            .filter(|&pos| {
+                tiles
+                    .iter()
+                    .find(|&&occupied_pos| occupied_pos == pos)
+                    .is_none()
+            })
+            .choose_multiple(&mut rng, amount);
 
-        for pos in starting_tiles.iter().map(|&(x, y)| Position { x, y }) {
-            let render_pos = board.cell_position_to_physical(pos.x, pos.y);
+        for pos in new_tiles.iter() {
+            let render_pos = self.cell_position_to_physical(pos.x, pos.y);
 
             commands
                 .spawn(SpriteBundle {
@@ -159,7 +175,7 @@ impl Board {
                         custom_size: Some(Vec2::new(Board::TILE_SIZE, Board::TILE_SIZE)),
                         ..default()
                     },
-                    transform: Transform::from_xyz(render_pos.x, render_pos.y, 1.),
+                    transform: Transform::from_xyz(render_pos.x, render_pos.y, 2.),
                     ..default()
                 })
                 .with_children(|child_builder| {
@@ -181,7 +197,7 @@ impl Board {
                         .insert(TileText);
                 })
                 .insert(Points { value: 2 })
-                .insert(pos);
+                .insert(pos.clone());
         }
     }
 
@@ -221,6 +237,20 @@ impl Board {
             transform.translation.y = physical_position.y;
         }
     }
+
+    fn on_new_tile_handler(
+        mut event_reader: EventReader<NewTileEvent>,
+        mut commands: Commands,
+        query_board: Query<&Board>,
+        tiles: Query<&Position>,
+        font_spec: Res<FontSpec>,
+    ) {
+        let board = query_board.single();
+
+        for _event in event_reader.iter() {
+            board.spawn_tiles(&mut commands, &font_spec, &tiles, 1);
+        }
+    }
 }
 
 enum BoardShiftDirection {
@@ -252,7 +282,6 @@ impl BoardShiftDirection {
         }
     }
 
-    /// TODO: make it sort direction dependent
     fn set_position_column(&self, board_size: u8, position: &mut Mut<Position>, new_column: u8) {
         match self {
             BoardShiftDirection::Left => position.x = new_column,
@@ -261,7 +290,6 @@ impl BoardShiftDirection {
             BoardShiftDirection::Down => position.y = new_column,
         }
     }
-    /// TODO: make it sort direction dependent
     fn get_position_row(&self, position: &Position) -> u8 {
         match self {
             BoardShiftDirection::Left | BoardShiftDirection::Right => position.y,
@@ -269,11 +297,12 @@ impl BoardShiftDirection {
         }
     }
 
-    fn sys_handle_keypress(
+    fn sys_handle_board_shift_on_keypress(
         mut commands: Commands,
         input: Res<Input<KeyCode>>,
         mut tiles: Query<(Entity, &mut Position, &mut Points)>,
         query_board: Query<&Board>,
+        mut event_writer: EventWriter<NewTileEvent>,
     ) {
         let board = query_board.single();
 
@@ -283,6 +312,11 @@ impl BoardShiftDirection {
         else {
             return;
         };
+
+        let original_tile_info = tiles
+            .iter()
+            .map(|(_, &postion, &points)| (postion.clone(), points.clone()))
+            .collect::<Vec<_>>();
 
         let mut ordered_tiles = tiles
             .iter_mut()
@@ -326,6 +360,17 @@ impl BoardShiftDirection {
                 }
             }
         }
+
+
+        // No point in checking for different length because the tile gets despawned later on.
+        if original_tile_info
+                .iter()
+                .zip(tiles.iter())
+                .any(|(original, updated)| original.0 != *updated.1 || original.1 != *updated.2)
+        {
+            // If a tile has moved / merged create a new tile
+            event_writer.send(NewTileEvent);
+        }
     }
 }
 
@@ -361,12 +406,12 @@ impl FromWorld for FontSpec {
     }
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, PartialEq, Clone, Copy)]
 struct Points {
     value: u32,
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, PartialEq, Clone, Copy)]
 struct Position {
     x: u8,
     y: u8,
@@ -374,3 +419,5 @@ struct Position {
 
 #[derive(Component)]
 struct TileText;
+
+struct NewTileEvent;
