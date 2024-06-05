@@ -29,6 +29,7 @@ fn main() {
                 .chain(),
         )
         .add_systems((
+            Board::render_tiles,
             Board::render_tile_points,
             BoardShiftDirection::sys_handle_keypress,
         ))
@@ -198,6 +199,24 @@ impl Board {
                     .expect("expect first section to be accessible as mutable");
                 text_section.value = points.value.to_string();
             }
+        }
+    }
+
+    fn render_tiles(
+        mut tiles: Query<(&mut Transform, &Position, Changed<Position>)>,
+        query_board: Query<&Board>,
+    ) {
+        let board = query_board.single();
+
+        for (mut transform, position, postion_changed) in tiles.iter_mut() {
+            if !postion_changed {
+                continue;
+            }
+
+            let physical_position = board.cell_position_to_physical(position.x, position.y);
+
+            transform.translation.x = physical_position.x;
+            transform.translation.y = physical_position.y;
         }
     }
 }
