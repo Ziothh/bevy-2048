@@ -40,6 +40,8 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
+// fn game_reset(mut commands: Commands, tiles: Query<Entity, With<Position>>, mut game ResMut<Game>)
+
 #[derive(Component)]
 struct Board {
     size: u8,
@@ -228,11 +230,53 @@ enum BoardShiftDirection {
     Down,
 }
 impl BoardShiftDirection {
+    /// TODO: make it sort direction dependent
+    fn sort_tiles(&self, a: &Position, b: &Position) -> Ordering {
+        match self {
+            BoardShiftDirection::Left => match Ord::cmp(&a.y, &b.y) {
+                Ordering::Equal => Ord::cmp(&a.x, &b.x),
+                ordering => ordering,
+            },
+            BoardShiftDirection::Right => match Ord::cmp(&b.y, &a.y) {
+                Ordering::Equal => Ord::cmp(&b.x, &a.x),
+                ordering => ordering,
+            },
+            BoardShiftDirection::Up => match Ord::cmp(&b.x, &a.x) {
+                Ordering::Equal => Ord::cmp(&b.y, &a.y),
+                ordering => ordering,
+            },
+            BoardShiftDirection::Down => match Ord::cmp(&a.x, &b.x) {
+                Ordering::Equal => Ord::cmp(&a.y, &b.y),
+                ordering => ordering,
+            },
+        }
+    }
+
+    /// TODO: make it sort direction dependent
+    fn set_position_column(&self, board_size: u8, position: &mut Mut<Position>, new_column: u8) {
+        match self {
+            BoardShiftDirection::Left => position.x = new_column,
+            BoardShiftDirection::Right => position.x = board_size - 1 - new_column,
+            BoardShiftDirection::Up => position.y = board_size - 1 - new_column,
+            BoardShiftDirection::Down => position.y = new_column,
+        }
+    }
+    /// TODO: make it sort direction dependent
+    fn get_position_row(&self, position: &Position) -> u8 {
+        match self {
+            BoardShiftDirection::Left | BoardShiftDirection::Right => position.y,
+            BoardShiftDirection::Up | BoardShiftDirection::Down => position.x,
+        }
+    }
+
     fn sys_handle_keypress(
+        mut commands: Commands,
         input: Res<Input<KeyCode>>,
         mut tiles: Query<(Entity, &mut Position, &mut Points)>,
-        mut commands: Commands,
+        query_board: Query<&Board>,
     ) {
+        let board = query_board.single();
+
         let Some(direction) = input
             .get_just_pressed()
             .find_map(|key_code| BoardShiftDirection::try_from(key_code).ok())
@@ -240,63 +284,48 @@ impl BoardShiftDirection {
             return;
         };
 
-        match direction {
-            BoardShiftDirection::Up => {
-                dbg!("Up");
-            }
-            BoardShiftDirection::Down => {
-                dbg!("Down");
-            }
-            BoardShiftDirection::Left => {
-                let mut ordered_tiles = tiles
-                    .iter_mut()
-                    .sorted_by(|a, b| match Ord::cmp(&a.1.y, &b.1.y) {
-                        Ordering::Equal => Ord::cmp(&a.1.x, &b.1.x),
-                        ordering => ordering,
-                    })
-                    .peekable();
+        let mut ordered_tiles = tiles
+            .iter_mut()
+            .sorted_by(|a, b| direction.sort_tiles(&a.1, &b.1))
+            .peekable();
 
-                let mut column: u8 = 0;
+        // Column is shift direction dependent
+        let mut column: u8 = 0;
+        while let Some(mut tile) = ordered_tiles.next() {
+            direction.set_position_column(board.size, &mut tile.1, column);
 
-                while let Some(mut tile) = ordered_tiles.next() {
-                    tile.1.x = column;
+            let Some(next_tile) = ordered_tiles.peek() else {
+                continue;
+            };
 
-                    let Some(next_tile) = ordered_tiles.peek() else {
-                        continue;
-                    };
+            if direction.get_position_row(&tile.1) != direction.get_position_row(&next_tile.1) {
+                // Different rows, don't merge
+                column = 0;
+            } else if tile.2.value != next_tile.2.value {
+                // Different values, don't merge
+                column += 1;
+            } else {
+                // Merge
+                let real_next_tile = ordered_tiles
+                    .next()
+                    .expect("A peekable tile should always exist when calling .next()");
 
-                    if tile.1.y != next_tile.1.y {
-                        // Different rows, don't merge
+                // Update the values
+                tile.2.value = tile.2.value + real_next_tile.2.value;
+
+                commands.entity(real_next_tile.0).despawn_recursive();
+
+                if let Some(future) = ordered_tiles.peek() {
+                    if direction.get_position_row(&tile.1) != direction.get_position_row(&future.1)
+                    {
+                        // Reset if it's on another row
                         column = 0;
-                    } else if tile.2.value != next_tile.2.value {
-                        // Different values, don't merge
-                        column += 1;
                     } else {
-                        // Merge
-                        let real_next_tile = ordered_tiles
-                            .next()
-                            .expect("A peekable tile should always exist when calling .next()");
-
-                        // Update the values
-                        tile.2.value = tile.2.value + real_next_tile.2.value;
-
-                        commands.entity(real_next_tile.0).despawn_recursive();
-
-                        if let Some(future) = ordered_tiles.peek() {
-                            if tile.1.y != future.1.y {
-                                column = 0;
-                            } else {
-                                column = column + 1;
-                            }
-                        }
+                        column = column + 1;
                     }
                 }
-                dbg!("Left");
             }
-            BoardShiftDirection::Right => {
-                dbg!("Right");
-            }
-        };
+        }
     }
 }
 
