@@ -19,6 +19,7 @@ fn main() {
             ..default()
         }))
         .init_resource::<FontSpec>()
+        .init_resource::<Game>()
         .add_startup_systems(
             (
                 setup,
@@ -302,6 +303,7 @@ impl BoardShiftDirection {
         input: Res<Input<KeyCode>>,
         mut tiles: Query<(Entity, &mut Position, &mut Points)>,
         query_board: Query<&Board>,
+        mut game: ResMut<Game>,
         mut event_writer: EventWriter<NewTileEvent>,
     ) {
         let board = query_board.single();
@@ -345,7 +347,9 @@ impl BoardShiftDirection {
                     .expect("A peekable tile should always exist when calling .next()");
 
                 // Update the values
-                tile.2.value = tile.2.value + real_next_tile.2.value;
+                let merged_value = tile.2.value + real_next_tile.2.value;
+                tile.2.value = merged_value;
+                game.score += merged_value;
 
                 commands.entity(real_next_tile.0).despawn_recursive();
 
@@ -361,12 +365,11 @@ impl BoardShiftDirection {
             }
         }
 
-
         // No point in checking for different length because the tile gets despawned later on.
         if original_tile_info
-                .iter()
-                .zip(tiles.iter())
-                .any(|(original, updated)| original.0 != *updated.1 || original.1 != *updated.2)
+            .iter()
+            .zip(tiles.iter())
+            .any(|(original, updated)| original.0 != *updated.1 || original.1 != *updated.2)
         {
             // If a tile has moved / merged create a new tile
             event_writer.send(NewTileEvent);
@@ -388,6 +391,11 @@ impl TryFrom<&KeyCode> for BoardShiftDirection {
             _ => Err(()),
         };
     }
+}
+
+#[derive(Default, Resource)]
+struct Game {
+    score: u32,
 }
 
 #[derive(Resource)]
