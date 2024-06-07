@@ -5,11 +5,13 @@
 use std::{cmp::Ordering, ops};
 
 use bevy::prelude::*;
-use common::FontSpec;
+use assets::FontSpec;
+use game::Game;
 use itertools::Itertools;
 use rand::{self, seq::IteratorRandom};
 
-mod common;
+mod assets;
+mod game;
 mod ui;
 
 fn main() {
@@ -397,12 +399,6 @@ impl TryFrom<&KeyCode> for BoardShiftDirection {
         };
     }
 }
-
-#[derive(Default, Resource)]
-struct Game {
-    score: u32,
-}
-
 
 #[derive(Component, Debug, PartialEq, Clone, Copy)]
 struct Points {

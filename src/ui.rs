@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 
-use crate::common::FontSpec;
+use crate::{assets::FontSpec, game::Game};
 
 pub struct UIPlugin;
 
 impl UIPlugin {
-    fn init(mut commands: Commands, font_spec: Res<FontSpec>) {
+    fn on_startup(mut commands: Commands, font_spec: Res<FontSpec>) {
         commands
             .spawn(NodeBundle {
                 style: Style {
@@ -131,11 +131,18 @@ impl UIPlugin {
                     });
             });
     }
+
+    fn sys_score_board(game: Res<Game>, mut query_score: Query<&mut Text, With<ScoreDisplay>>) {
+        let mut text = query_score.single_mut();
+
+        text.sections[0].value = game.score.to_string();
+    }
 }
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(UIPlugin::init);
+        app.add_startup_system(UIPlugin::on_startup)
+            .add_system(UIPlugin::sys_score_board);
     }
 }
 
