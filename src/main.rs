@@ -5,8 +5,12 @@
 use std::{cmp::Ordering, ops};
 
 use bevy::prelude::*;
+use common::FontSpec;
 use itertools::Itertools;
 use rand::{self, seq::IteratorRandom};
+
+mod common;
+mod ui;
 
 fn main() {
     App::new()
@@ -20,6 +24,7 @@ fn main() {
         }))
         .init_resource::<FontSpec>()
         .init_resource::<Game>()
+        .add_plugin(ui::UIPlugin)
         .add_startup_systems(
             (
                 setup,
@@ -398,21 +403,6 @@ struct Game {
     score: u32,
 }
 
-#[derive(Resource)]
-struct FontSpec {
-    family: Handle<Font>,
-}
-impl FromWorld for FontSpec {
-    fn from_world(world: &mut World) -> Self {
-        let asset_server = world
-            .get_resource_mut::<AssetServer>()
-            .expect("AssetServer to be initialised with the DefaultPlugins");
-
-        return FontSpec {
-            family: asset_server.load("fonts/FiraSans-Bold.ttf"),
-        };
-    }
-}
 
 #[derive(Component, Debug, PartialEq, Clone, Copy)]
 struct Points {
