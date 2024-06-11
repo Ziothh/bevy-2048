@@ -25,6 +25,7 @@ fn main() {
         .init_resource::<FontSpec>()
         .init_resource::<Game>()
         .add_state::<GameState>()
+        .add_plugin(bevy_easings::EasingsPlugin)
         .add_plugin(ui::UIPlugin)
         .add_startup_systems(
             (

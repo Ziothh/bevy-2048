@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_easings::*;
 
 use itertools::Itertools;
 use rand::{self, seq::IteratorRandom};
@@ -187,20 +188,26 @@ impl Board {
     }
 
     pub fn render_tiles(
-        mut tiles: Query<(&mut Transform, &tile::Position, Changed<tile::Position>)>,
+        mut commands: Commands,
+        mut tiles: Query<(Entity, &mut Transform, &tile::Position), Changed<tile::Position>>,
         query_board: Query<&Board>,
     ) {
         let board = query_board.single();
 
-        for (mut transform, position, postion_changed) in tiles.iter_mut() {
-            if !postion_changed {
-                continue;
-            }
-
+        for (entity, transform, position) in tiles.iter_mut() {
             let physical_position = board.cell_position_to_physical(position.x, position.y);
 
-            transform.translation.x = physical_position.x;
-            transform.translation.y = physical_position.y;
+            commands.entity(entity).insert(transform.ease_to(
+                Transform::from_xyz(
+                    physical_position.x,
+                    physical_position.y,
+                    transform.translation.z,
+                ),
+                EaseFunction::QuadraticInOut,
+                EasingType::Once {
+                    duration: std::time::Duration::from_millis(100),
+                },
+            ));
         }
     }
 
