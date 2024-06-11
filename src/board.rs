@@ -320,6 +320,9 @@ impl BoardShiftDirection {
                 let merged_value = tile.2.value + real_next_tile.2.value;
                 tile.2.value = merged_value;
                 game.score += merged_value;
+                if game.score > game.best_score {
+                    game.best_score = game.score;
+                }
 
                 commands.entity(real_next_tile.0).despawn_recursive();
 
