@@ -114,6 +114,7 @@ impl UIPlugin {
                             align_items: AlignItems::Center,
                             ..default()
                         },
+                        background_color: button::colors::NORMAL.into(),
                         ..default()
                     })
                     .with_children(|parent| {
@@ -141,8 +142,11 @@ impl UIPlugin {
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(UIPlugin::on_startup)
-            .add_system(UIPlugin::sys_score_board);
+        app.add_startup_system(UIPlugin::on_startup).add_systems((
+            UIPlugin::sys_score_board,
+            button::interaction_system,
+            button::text_system,
+        ));
     }
 }
 
@@ -173,4 +177,80 @@ mod score_box {
         hue: 315.0,
         alpha: 1.0,
     };
+}
+
+mod button {
+    use bevy::prelude::*;
+
+    use crate::game::GameState;
+
+    pub(super) mod colors {
+        use bevy::prelude::*;
+
+        pub const NORMAL: Color = Color::Lcha {
+            lightness: 0.15,
+            chroma: 0.5,
+            hue: 281.0,
+            alpha: 1.0,
+        };
+        pub const HOVERED: Color = Color::Lcha {
+            lightness: 0.55,
+            chroma: 0.5,
+            hue: 281.0,
+            alpha: 1.0,
+        };
+        pub const PRESSED: Color = Color::Lcha {
+            lightness: 0.75,
+            chroma: 0.5,
+            hue: 281.0,
+            alpha: 1.0,
+        };
+    }
+
+    pub fn interaction_system(
+        mut interaction_query: Query<
+            (&Interaction, &mut BackgroundColor),
+            (Changed<Interaction>, With<Button>),
+        >,
+        run_state: Res<State<GameState>>,
+        mut next_state: ResMut<NextState<GameState>>,
+    ) {
+        for (&interaction, mut bg_color) in interaction_query.iter_mut() {
+            match interaction {
+                Interaction::Clicked => {
+                    *bg_color = colors::PRESSED.into();
+                    match run_state.0 {
+                        GameState::Playing => {
+                            next_state.set(GameState::GameOver);
+                        }
+                        GameState::GameOver => {
+                            next_state.set(GameState::Playing);
+                        }
+                    };
+                }
+                Interaction::Hovered => {
+                    *bg_color = colors::HOVERED.into();
+                    // text.sections[0].value = "Restart".into();
+                }
+                Interaction::None => *bg_color = colors::NORMAL.into(),
+            };
+        }
+    }
+
+    pub fn text_system(
+        button_query: Query<&Children, With<Button>>,
+        mut text_query: Query<&mut Text>,
+        run_state: Res<State<GameState>>,
+    ) {
+        let first_child_entity = button_query
+            .single()
+            .first()
+            .expect("Expect button to have one child");
+        let mut text = text_query.get_mut(*first_child_entity).unwrap();
+
+        match run_state.0 {
+            GameState::Playing => text.sections[0].value = "End Game".to_string(),
+            GameState::GameOver => text.sections[0].value = "New Game".to_string(),
+        }
+    }
 }
